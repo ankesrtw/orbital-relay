@@ -52,8 +52,9 @@ function wireHudToggle(hudId, toggleId, bodyId) {
     _hudPanels.push(hud);
     toggle.addEventListener('click', () => {
         const willExpand = hud.classList.contains('key-hud--collapsed');
+        const isMobile   = window.matchMedia('(max-width: 600px)').matches;
         // On narrow screens keep only one panel expanded so cards don't overlap.
-        if (willExpand && window.matchMedia('(max-width: 600px)').matches) {
+        if (willExpand && isMobile) {
             _hudPanels.forEach(p => {
                 if (p !== hud) {
                     p.classList.add('key-hud--collapsed');
@@ -67,6 +68,9 @@ function wireHudToggle(hudId, toggleId, bodyId) {
         const collapsed = hud.classList.toggle('key-hud--collapsed');
         body.hidden     = collapsed;
         toggle.setAttribute('aria-expanded', String(!collapsed));
+        // Mobile: while one panel is open, hide the OTHER collapsed chips so an
+        // expanded panel can never cover (and block taps on) another chip.
+        document.body.classList.toggle('hud-panel-open', !collapsed && isMobile);
     });
 }
 
@@ -88,6 +92,9 @@ const viewer = new Cesium.Viewer('cesium-container', {
     navigationHelpButton:  false,
     shouldAnimate:         true,
 });
+
+// Expose the viewer for console debugging / inspection.
+window.viewer = viewer;
 
 // Space atmosphere + day/night terminator (dynamic lighting follows the sun)
 viewer.scene.globe.enableLighting          = true;

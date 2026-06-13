@@ -584,24 +584,33 @@ body[data-page-id="orbital-relay"] {
     }
 
     /* Layers + Starlink panels stay visible on mobile. Collapsed they're just
-       a title chip (top-right); expanded they cap to the viewport height and
-       scroll internally, so they never overlap or cover the globe. The two
-       panels stack vertically on the right edge. */
+       a title chip on the right edge; expanded they cap to the viewport height
+       and scroll internally, so they never cover the globe. The two chips sit
+       at DISTINCT top offsets so neither ever covers the other's toggle —
+       Starlink above, Layers below it. JS keeps only one expanded at a time. */
     #starlink-hud {
         top: 76px;
         right: 12px;
     }
     #layers-hud {
-        top: 76px;
+        top: 120px;          /* below the collapsed Starlink chip — no overlap */
         right: 12px;
-        /* When expanded, offset below the (collapsed) Starlink chip so the two
-           cards don't overlap. JS keeps only one expanded at a time on mobile. */
-        max-height: calc(100vh - 76px - 80px);
+        max-height: calc(100vh - 120px - 70px);
     }
-    /* When a panel is expanded on mobile, dim+narrow so the globe stays readable */
+    /* When a panel is expanded on mobile, narrow it so the globe stays readable.
+       The expanded panel may grow taller than the other chip's top offset, but
+       since only one is ever open at a time (JS), it has the room. */
     #layers-hud:not(.key-hud--collapsed),
     #starlink-hud:not(.key-hud--collapsed) {
         max-width: min(74vw, 280px);
+        z-index: 18;         /* expanded panel sits above the other collapsed chip */
+    }
+    /* While one panel is open, hide the OTHER collapsed chips so the expanded
+       panel can't cover/block their toggles. body.hud-panel-open is set by JS;
+       the expanded panel itself keeps key-hud-body visible, so it stays shown. */
+    body.hud-panel-open #starlink-hud.key-hud--collapsed,
+    body.hud-panel-open #layers-hud.key-hud--collapsed {
+        display: none;
     }
 
     #year-bar-mission {
