@@ -95,7 +95,7 @@ is the zero-config home for this project.
 
 **Option A — Git integration (auto-deploy on push):**
 
-1. Push this repo to GitHub (or Codeberg, GitLab, etc.).
+1. Push this repo to any Git host (GitHub, Codeberg, GitLab, etc.).
 2. In the [Cloudflare dashboard](https://dash.cloudflare.com) → **Workers & Pages**
    → **Create** → **Pages** → **Connect to Git**, pick this repo.
 3. Build settings:
