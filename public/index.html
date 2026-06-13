@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <link rel="icon" type="image/svg+xml" href="/icon.svg">
+    <meta name="description" content="Orbital Relay — live satellite constellation and ISS telemetry on a 3D globe.">
+    <meta name="theme-color" content="#000000">
+    <title>Orbital Relay — Live Satellite Tracker</title>
+    <!-- CesiumJS -->
+    <script>window.CESIUM_BASE_URL = 'https://cesium.com/downloads/cesiumjs/releases/1.113/Build/Cesium/';</script>
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.113/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.113/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <link rel="stylesheet" href="orbit.css">
+</head>
+
+<body data-page-id="orbital-relay">
+
+    <!-- VFX Layer -->
+    <div class="vfx-overlay" aria-hidden="true">
+        <div class="noise-layer"></div>
+    </div>
+
+    <!-- Cesium globe container — full-screen, behind everything -->
+    <div id="cesium-container" aria-hidden="true"></div>
+
+    <!-- ISS Telemetry HUD — top left (collapsible) -->
+    <div id="iss-hud" class="orbital-hud key-hud--collapsed">
+        <button class="key-hud-toggle" id="iss-hud-toggle" aria-expanded="false" aria-controls="iss-hud-body">
+            <span class="key-hud-toggle-arrow">▶</span>
+            <span class="hud-title" style="margin:0;border:none;padding:0;">// ISS TELEMETRY</span>
+        </button>
+        <div id="iss-hud-body" class="key-hud-body" hidden>
+            <div class="hud-row">
+                <span class="hud-label">LAT</span>
+                <span id="hud-iss-lat" class="hud-val">—</span>
+            </div>
+            <div class="hud-row">
+                <span class="hud-label">LON</span>
+                <span id="hud-iss-lon" class="hud-val">—</span>
+            </div>
+            <div class="hud-row">
+                <span class="hud-label">ALT</span>
+                <span id="hud-iss-alt" class="hud-val">—</span>
+            </div>
+            <div class="hud-row">
+                <span class="hud-label">VEL</span>
+                <span id="hud-iss-vel" class="hud-val">—</span>
+            </div>
+            <hr class="hud-divider">
+            <div class="hud-row">
+                <span class="hud-label">DATE</span>
+                <span id="hud-date" class="hud-val">—</span>
+            </div>
+            <div class="hud-row">
+                <span class="hud-label">TIME</span>
+                <span id="hud-time" class="hud-val">—</span>
+            </div>
+            <div class="hud-live">&#9679; LIVE</div>
+        </div>
+    </div>
+
+    <!-- Starlink panel — own card so the dense constellation control is separate
+         from the nation layer list (and survives on mobile). -->
+    <div id="starlink-hud" class="orbital-hud key-hud--collapsed">
+        <button class="key-hud-toggle" id="starlink-hud-toggle" aria-expanded="false" aria-controls="starlink-hud-body">
+            <span class="key-hud-toggle-arrow">▶</span>
+            <span class="hud-title" style="margin:0;border:none;padding:0;">// STARLINK</span>
+        </button>
+        <div id="starlink-hud-body" class="key-hud-body" hidden>
+            <div class="layer-item layer-item--starlink">
+                <label class="layer-label">
+                    <input type="checkbox" class="layer-cb" data-group="starlink" data-builtin="true" id="starlink-cb">
+                    <span class="layer-swatch" style="background:#00ccff;box-shadow:0 0 5px #00ccffaa;"></span>
+                    <span class="layer-name">SHOW STARLINK</span>
+                    <span class="layer-flag">🇺🇸</span>
+                </label>
+                <span class="layer-status" id="layer-status-starlink"></span>
+            </div>
+            <!-- Density slider + fetch-all, hidden until Starlink is checked -->
+            <div id="starlink-controls" hidden>
+                <div class="sl-slider-row">
+                    <span class="hud-label sl-label-min">40</span>
+                    <input type="range" id="sl-slider" class="sl-slider"
+                           min="40" max="600" step="10" value="40"
+                           aria-label="Starlink satellite count">
+                    <span class="hud-label sl-label-max" id="sl-label-max">600</span>
+                </div>
+                <div class="sl-slider-val">
+                    <span id="sl-count-display">40</span>&nbsp;/&nbsp;<span id="sl-total-display">600</span>&nbsp;SATS
+                </div>
+                <button id="sl-fetch-all" class="sl-fetch-all-btn" type="button">
+                    ⬇ FETCH FULL CONSTELLATION
+                </button>
+                <div class="sl-fetch-hint" id="sl-fetch-hint">live · may impact framerate</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Layers panel — top right (collapsible). ISS always on; all others toggle. -->
+    <div id="layers-hud" class="orbital-hud key-hud--collapsed">
+        <button class="key-hud-toggle" id="layers-hud-toggle" aria-expanded="false" aria-controls="layers-hud-body">
+            <span class="key-hud-toggle-arrow">▶</span>
+            <span class="hud-title" style="margin:0;border:none;padding:0;">// LAYERS</span>
+        </button>
+        <div id="layers-hud-body" class="key-hud-body" hidden>
+            <div class="source-row">
+                <span class="source-row__label">SOURCE</span>
+                <div class="source-toggle">
+                    <button class="source-btn" data-source="celestrak">CELESTRAK</button>
+                    <button class="source-btn" data-source="spacetrack" disabled title="Phase 2">SPACE-TRACK</button>
+                </div>
+                <button id="refresh-data" class="refresh-btn" title="Refresh live data" aria-label="Refresh live data">&#x21bb;</button>
+            </div>
+            <ul class="layer-list" id="layer-list">
+
+                <!-- ── ISS — always on, no checkbox ── -->
+                <li class="layer-item">
+                    <span class="layer-label layer-label--static">
+                        <span class="layer-swatch" style="background:#f5a623;box-shadow:0 0 5px #f5a623aa;opacity:1;"></span>
+                        <span class="layer-name">ISS</span>
+                        <span class="layer-flag">🛸</span>
+                    </span>
+                    <span class="layer-status" id="layer-status-iss">1</span>
+                </li>
+
+                <!-- ══ USA ══ -->
+                <li class="layer-item layer-item--section">
+                    <span class="layer-section-label">🇺🇸 USA</span>
+                </li>
+                <!-- Starlink lives in its own panel (see #starlink-hud) -->
+                <!-- GPS -->
+                <li class="layer-item">
+                    <label class="layer-label">
+                        <input type="checkbox" class="layer-cb" data-group="gps-ops" data-color="#f5f500" data-cap="35">
+                        <span class="layer-swatch" style="background:#f5f500;box-shadow:0 0 5px #f5f500aa;"></span>
+                        <span class="layer-name">GPS</span>
+                        <span class="layer-flag">🇺🇸</span>
+                    </label>
+                    <span class="layer-status" id="layer-status-gps-ops"></span>
+                </li>
+                <!-- Iridium NEXT -->
+                <li class="layer-item">
+                    <label class="layer-label">
+                        <input type="checkbox" class="layer-cb" data-group="iridium-NEXT" data-color="#cc88ff" data-cap="66">
+                        <span class="layer-swatch" style="background:#cc88ff;box-shadow:0 0 5px #cc88ffaa;"></span>
+                        <span class="layer-name">IRIDIUM</span>
+                        <span class="layer-flag">🇺🇸</span>
+                    </label>
+                    <span class="layer-status" id="layer-status-iridium-NEXT"></span>
+                </li>
+
+                <!-- ══ RUSSIA ══ -->
+                <li class="layer-item layer-item--section">
+                    <span class="layer-section-label">🇷🇺 RUSSIA</span>
+                </li>
+                <!-- GLONASS -->
+                <li class="layer-item">
+                    <label class="layer-label">
+                        <input type="checkbox" class="layer-cb" data-group="glo-ops" data-color="#ff4444" data-cap="30">
+                        <span class="layer-swatch" style="background:#ff4444;box-shadow:0 0 5px #ff4444aa;"></span>
+                        <span class="layer-name">GLONASS</span>
+                        <span class="layer-flag">🇷🇺</span>
+                    </label>
+                    <span class="layer-status" id="layer-status-glo-ops"></span>
+                </li>
+
+                <!-- ══ EU / ESA ══ -->
+                <li class="layer-item layer-item--section">
+                    <span class="layer-section-label">🇪🇺 EU / ESA</span>
+                </li>
+                <!-- Galileo -->
+                <li class="layer-item">
+                    <label class="layer-label">
+                        <input type="checkbox" class="layer-cb" data-group="galileo" data-color="#4488ff" data-cap="30">
+                        <span class="layer-swatch" style="background:#4488ff;box-shadow:0 0 5px #4488ffaa;"></span>
+                        <span class="layer-name">GALILEO</span>
+                        <span class="layer-flag">🇪🇺</span>
+                    </label>
+                    <span class="layer-status" id="layer-status-galileo"></span>
+                </li>
+                <!-- OneWeb -->
+                <li class="layer-item">
+                    <label class="layer-label">
+                        <input type="checkbox" class="layer-cb" data-group="oneweb" data-color="#66ddff" data-cap="150">
+                        <span class="layer-swatch" style="background:#66ddff;box-shadow:0 0 5px #66ddffaa;"></span>
+                        <span class="layer-name">ONEWEB</span>
+                        <span class="layer-flag">🇪🇺</span>
+                    </label>
+                    <span class="layer-status" id="layer-status-oneweb"></span>
+                </li>
+
+                <!-- ══ CHINA ══ -->
+                <li class="layer-item layer-item--section">
+                    <span class="layer-section-label">🇨🇳 CHINA</span>
+                </li>
+                <!-- BeiDou -->
+                <li class="layer-item">
+                    <label class="layer-label">
+                        <input type="checkbox" class="layer-cb" data-group="beidou" data-color="#ff6600" data-cap="50">
+                        <span class="layer-swatch" style="background:#ff6600;box-shadow:0 0 5px #ff6600aa;"></span>
+                        <span class="layer-name">BEIDOU</span>
+                        <span class="layer-flag">🇨🇳</span>
+                    </label>
+                    <span class="layer-status" id="layer-status-beidou"></span>
+                </li>
+                <!-- Qianfan / Thousand Sails -->
+                <li class="layer-item">
+                    <label class="layer-label">
+                        <input type="checkbox" class="layer-cb" data-group="qianfan" data-color="#ffaa44" data-cap="150">
+                        <span class="layer-swatch" style="background:#ffaa44;box-shadow:0 0 5px #ffaa44aa;"></span>
+                        <span class="layer-name">QIANFAN</span>
+                        <span class="layer-flag">🇨🇳</span>
+                    </label>
+                    <span class="layer-status" id="layer-status-qianfan"></span>
+                </li>
+                <!-- Guowang / Hulianwang -->
+                <li class="layer-item">
+                    <label class="layer-label">
+                        <input type="checkbox" class="layer-cb" data-group="hulianwang" data-color="#ffcc66" data-cap="150">
+                        <span class="layer-swatch" style="background:#ffcc66;box-shadow:0 0 5px #ffcc66aa;"></span>
+                        <span class="layer-name">GUOWANG</span>
+                        <span class="layer-flag">🇨🇳</span>
+                    </label>
+                    <span class="layer-status" id="layer-status-hulianwang"></span>
+                </li>
+
+                <!-- ══ INDIA ══ -->
+                <li class="layer-item layer-item--section">
+                    <span class="layer-section-label">🇮🇳 INDIA</span>
+                </li>
+                <!-- NavIC / IRNSS (ISRO) -->
+                <li class="layer-item">
+                    <label class="layer-label">
+                        <input type="checkbox" class="layer-cb" data-group="irnss" data-color="#ff9933" data-cap="15">
+                        <span class="layer-swatch" style="background:#ff9933;box-shadow:0 0 5px #ff9933aa;"></span>
+                        <span class="layer-name">NAVIC</span>
+                        <span class="layer-flag">🇮🇳</span>
+                    </label>
+                    <span class="layer-status" id="layer-status-irnss"></span>
+                </li>
+
+                <!-- ══ INTERNATIONAL ══ -->
+                <li class="layer-item layer-item--section">
+                    <span class="layer-section-label">🌍 INTERNATIONAL</span>
+                </li>
+                <!-- Other stations (Tiangong etc) -->
+                <li class="layer-item">
+                    <label class="layer-label">
+                        <input type="checkbox" class="layer-cb" data-group="stations-other" data-builtin="true">
+                        <span class="layer-swatch" style="background:#ff8c69;box-shadow:0 0 5px #ff8c69aa;"></span>
+                        <span class="layer-name">STATIONS</span>
+                        <span class="layer-flag">🛰</span>
+                    </label>
+                    <span class="layer-status" id="layer-status-stations-other"></span>
+                </li>
+                <!-- Weather -->
+                <li class="layer-item">
+                    <label class="layer-label">
+                        <input type="checkbox" class="layer-cb" data-group="weather" data-color="#88ffcc" data-cap="100">
+                        <span class="layer-swatch" style="background:#88ffcc;box-shadow:0 0 5px #88ffccaa;"></span>
+                        <span class="layer-name">WEATHER</span>
+                        <span class="layer-flag">🌍</span>
+                    </label>
+                    <span class="layer-status" id="layer-status-weather"></span>
+                </li>
+                <!-- Geostationary belt -->
+                <li class="layer-item">
+                    <label class="layer-label">
+                        <input type="checkbox" class="layer-cb" data-group="geo" data-color="#ffe066" data-cap="150">
+                        <span class="layer-swatch" style="background:#ffe066;box-shadow:0 0 5px #ffe066aa;"></span>
+                        <span class="layer-name">GEO BELT</span>
+                        <span class="layer-flag">🌍</span>
+                    </label>
+                    <span class="layer-status" id="layer-status-geo"></span>
+                </li>
+                <!-- Earth observation -->
+                <li class="layer-item">
+                    <label class="layer-label">
+                        <input type="checkbox" class="layer-cb" data-group="resource" data-color="#66ff99" data-cap="150">
+                        <span class="layer-swatch" style="background:#66ff99;box-shadow:0 0 5px #66ff99aa;"></span>
+                        <span class="layer-name">EARTH-OBS</span>
+                        <span class="layer-flag">🌍</span>
+                    </label>
+                    <span class="layer-status" id="layer-status-resource"></span>
+                </li>
+                <!-- Newest launches -->
+                <li class="layer-item">
+                    <label class="layer-label">
+                        <input type="checkbox" class="layer-cb" data-group="last-30-days" data-color="#ff66cc" data-cap="150">
+                        <span class="layer-swatch" style="background:#ff66cc;box-shadow:0 0 5px #ff66ccaa;"></span>
+                        <span class="layer-name">NEWEST</span>
+                        <span class="layer-flag">🚀</span>
+                    </label>
+                    <span class="layer-status" id="layer-status-last-30-days"></span>
+                </li>
+                <!-- Debris (Cosmos 2251 collision field) -->
+                <li class="layer-item">
+                    <label class="layer-label">
+                        <input type="checkbox" class="layer-cb" data-group="cosmos-2251-debris" data-color="#ff5555" data-cap="150">
+                        <span class="layer-swatch" style="background:#ff5555;box-shadow:0 0 5px #ff5555aa;"></span>
+                        <span class="layer-name">DEBRIS</span>
+                        <span class="layer-flag">💥</span>
+                    </label>
+                    <span class="layer-status" id="layer-status-cosmos-2251-debris"></span>
+                </li>
+            </ul>
+            <div class="hud-controls-hint">DRAG rotate &nbsp;·&nbsp; SCROLL zoom &nbsp;·&nbsp; CLICK a sat to inspect</div>
+        </div>
+    </div>
+
+    <!-- Mission Year Bar — bottom left -->
+    <div id="year-bar-mission" class="orbital-hud">
+        <div class="hud-title">// MISSION TIMELINE</div>
+        <div class="year-track-wrap">
+            <span class="year-label">2026</span>
+            <div class="year-track">
+                <div class="year-pip year-pip--now" title="Current year: 2026"></div>
+            </div>
+            <span class="year-label">2057</span>
+        </div>
+        <div class="year-status">RELAY ACTIVE &nbsp;·&nbsp; YEAR 0 OF 31</div>
+    </div>
+
+    <!-- Relay ship — fixed visual anchor, bottom right -->
+    <div id="relay-ship" aria-hidden="true">
+        <svg viewBox="0 0 80 210" xmlns="http://www.w3.org/2000/svg">
+            <!-- Nose cone -->
+            <polygon points="40,4 30,32 50,32" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+            <!-- Forward module -->
+            <rect x="30" y="32" width="20" height="28" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/>
+            <!-- Comm dish -->
+            <circle cx="40" cy="22" r="5" fill="none" stroke="currentColor" stroke-width="1"/>
+            <line x1="40" y1="17" x2="40" y2="27" stroke="currentColor" stroke-width="0.8"/>
+            <!-- Solar array connectors -->
+            <line x1="30" y1="46" x2="4" y2="46" stroke="currentColor" stroke-width="1.1"/>
+            <line x1="50" y1="46" x2="76" y2="46" stroke="currentColor" stroke-width="1.1"/>
+            <!-- Solar panel left -->
+            <rect x="2" y="40" width="26" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.1"/>
+            <line x1="10" y1="40" x2="10" y2="52" stroke="currentColor" stroke-width="0.6" opacity="0.55"/>
+            <line x1="18" y1="40" x2="18" y2="52" stroke="currentColor" stroke-width="0.6" opacity="0.55"/>
+            <!-- Solar panel right -->
+            <rect x="52" y="40" width="26" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.1"/>
+            <line x1="62" y1="40" x2="62" y2="52" stroke="currentColor" stroke-width="0.6" opacity="0.55"/>
+            <line x1="70" y1="40" x2="70" y2="52" stroke="currentColor" stroke-width="0.6" opacity="0.55"/>
+            <!-- Truss connector -->
+            <line x1="40" y1="60" x2="40" y2="82" stroke="currentColor" stroke-width="2"/>
+            <line x1="34" y1="67" x2="46" y2="67" stroke="currentColor" stroke-width="0.9"/>
+            <line x1="34" y1="75" x2="46" y2="75" stroke="currentColor" stroke-width="0.9"/>
+            <!-- Habitat module -->
+            <rect x="28" y="82" width="24" height="50" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+            <!-- Porthole windows -->
+            <circle cx="40" cy="97"  r="4" fill="none" stroke="currentColor" stroke-width="1"/>
+            <circle cx="40" cy="115" r="4" fill="none" stroke="currentColor" stroke-width="1"/>
+            <!-- Engine truss -->
+            <line x1="36" y1="132" x2="26" y2="162" stroke="currentColor" stroke-width="1"/>
+            <line x1="44" y1="132" x2="54" y2="162" stroke="currentColor" stroke-width="1"/>
+            <line x1="33" y1="143" x2="47" y2="143" stroke="currentColor" stroke-width="0.9"/>
+            <line x1="30" y1="153" x2="50" y2="153" stroke="currentColor" stroke-width="0.9"/>
+            <!-- Engine nozzles -->
+            <ellipse cx="27" cy="170" rx="9"  ry="5"   fill="none" stroke="currentColor" stroke-width="1.4"/>
+            <ellipse cx="53" cy="170" rx="9"  ry="5"   fill="none" stroke="currentColor" stroke-width="1.4"/>
+            <!-- Engine glow -->
+            <ellipse cx="27" cy="170" rx="5.5" ry="2.5" fill="currentColor" opacity="0.22"/>
+            <ellipse cx="53" cy="170" rx="5.5" ry="2.5" fill="currentColor" opacity="0.22"/>
+        </svg>
+    </div>
+
+    <!-- Bottom satellite count bar -->
+    <div id="sat-bar" class="orbital-sat-bar">
+        TRACKING&nbsp;<span id="hud-sat-count">—</span>&nbsp;ACTIVE SATELLITES
+        &nbsp;·&nbsp; ISS ORBITAL PERIOD ~92 MIN
+    </div>
+
+    <!-- Time-warp controls — bottom center, above sat bar -->
+    <div id="time-warp" class="orbital-hud time-warp" role="group" aria-label="Time warp controls">
+        <span class="tw-label">⏱ TIME</span>
+        <div class="tw-btns">
+            <button class="tw-btn" data-rate="0"   title="Pause">❚❚</button>
+            <button class="tw-btn tw-btn--active" data-rate="1"   title="Real time">1×</button>
+            <button class="tw-btn" data-rate="60"  title="60× speed">60×</button>
+            <button class="tw-btn" data-rate="600" title="600× speed">600×</button>
+        </div>
+    </div>
+
+    <!-- Satellite inspector card — pinned when a satellite is clicked -->
+    <div id="sat-detail" class="orbital-hud sat-detail" hidden>
+        <button id="sat-detail-close" class="sat-detail-close" aria-label="Close">✕</button>
+        <div class="hud-title" id="sat-detail-name">// SATELLITE</div>
+        <div class="hud-row"><span class="hud-label">GROUP</span><span id="sat-detail-group" class="hud-val">—</span></div>
+        <div class="hud-row"><span class="hud-label">LAT</span><span id="sat-detail-lat" class="hud-val">—</span></div>
+        <div class="hud-row"><span class="hud-label">LON</span><span id="sat-detail-lon" class="hud-val">—</span></div>
+        <div class="hud-row"><span class="hud-label">ALT</span><span id="sat-detail-alt" class="hud-val">—</span></div>
+        <div class="hud-row"><span class="hud-label">VEL</span><span id="sat-detail-vel" class="hud-val">—</span></div>
+        <div class="hud-row"><span class="hud-label">PERIOD</span><span id="sat-detail-period" class="hud-val">—</span></div>
+        <div class="hud-row"><span class="hud-label">REGIME</span><span id="sat-detail-regime" class="hud-val">—</span></div>
+    </div>
+
+    <!-- Neutral topbar -->
+    <div class="orbital-topbar">
+        <a href="https://github.com/ankesrtw/orbital-relay" class="orbital-brand" aria-label="Source on GitHub" target="_blank" rel="noopener">◂ SOURCE</a>
+        <span class="orbital-wordmark">ORBITAL&nbsp;RELAY</span>
+    </div>
+
+    <footer class="orbital-footer">
+        <span>Live data: Celestrak · rendered with CesiumJS · open source</span>
+    </footer>
+
+    <script src="vendor/satellite.min.js"></script>
+    <script src="orbital-relay.js"></script>
+</body>
+
+</html>

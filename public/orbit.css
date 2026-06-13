@@ -1,0 +1,736 @@
+:root { --font-mono: "SFMono-Regular", "JetBrains Mono", "Roboto Mono", "Courier New", monospace; }
+
+/* ==========================================================================
+   ORBITAL RELAY — live satellite tracker
+   ========================================================================== */
+
+body[data-page-id="orbital-relay"] {
+    overflow: hidden;
+}
+
+#cesium-container {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+}
+
+/* Strip Cesium's default chrome — keep only the globe */
+#cesium-container .cesium-widget-credits {
+    display: none !important;
+}
+
+#cesium-container .cesium-viewer-toolbar,
+#cesium-container .cesium-viewer-animationContainer,
+#cesium-container .cesium-viewer-timelineContainer,
+#cesium-container .cesium-viewer-bottom {
+    display: none !important;
+}
+
+/* Shared HUD card */
+.orbital-hud {
+    position: fixed;
+    z-index: 15;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 1.4px;
+    color: rgba(200, 240, 255, 0.95);
+    background: linear-gradient(145deg, rgba(0, 12, 24, 0.92) 0%, rgba(0, 25, 45, 0.88) 100%);
+    border: 1px solid rgba(0, 210, 255, 0.45);
+    border-radius: 8px;
+    padding: 18px 22px;
+    backdrop-filter: blur(16px);
+    min-width: 210px;
+    box-shadow:
+        0 0 30px rgba(0, 210, 255, 0.08),
+        0 4px 24px rgba(0, 0, 0, 0.6),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* ISS panel — amber accent */
+#iss-hud {
+    top: 90px;
+    left: 24px;
+    border-color: rgba(245, 166, 35, 0.55);
+    box-shadow:
+        0 0 30px rgba(245, 166, 35, 0.12),
+        0 4px 24px rgba(0, 0, 0, 0.6),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.hud-title {
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: rgba(0, 210, 255, 0.6);
+    border-bottom: 1px solid rgba(0, 210, 255, 0.2);
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+}
+
+#iss-hud .hud-title {
+    color: rgba(245, 166, 35, 0.7);
+    border-color: rgba(245, 166, 35, 0.2);
+}
+
+.hud-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    margin-bottom: 6px;
+}
+
+.hud-label {
+    color: rgba(200, 240, 255, 0.45);
+    font-size: 0.62rem;
+    letter-spacing: 1.5px;
+}
+
+.hud-val {
+    color: #ffffff;
+    font-size: 0.78rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+}
+
+.hud-live {
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(245, 166, 35, 0.2);
+    color: #f5a623;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    animation: tv-signal-blink 1.6s infinite;
+}
+
+.hud-divider {
+    border: none;
+    border-top: 1px solid rgba(0, 210, 255, 0.15);
+    margin: 12px 0;
+}
+
+.hud-controls {
+    font-size: 0.58rem;
+    color: rgba(200, 240, 255, 0.35);
+    letter-spacing: 1.5px;
+    line-height: 1.7;
+}
+
+.hud-controls-hint {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(0, 210, 255, 0.15);
+    font-size: 0.58rem;
+    color: rgba(200, 240, 255, 0.35);
+    letter-spacing: 1.5px;
+    text-align: center;
+}
+
+/* Bottom satellite count bar */
+.orbital-sat-bar {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 15;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: rgba(200, 240, 255, 0.7);
+    background: rgba(0, 12, 24, 0.82);
+    border: 1px solid rgba(0, 210, 255, 0.3);
+    border-radius: 20px;
+    padding: 8px 20px;
+    backdrop-filter: blur(12px);
+    white-space: nowrap;
+    box-shadow: 0 0 20px rgba(0, 210, 255, 0.06);
+}
+
+.orbital-sat-bar span {
+    color: #ffffff;
+    font-weight: 700;
+}
+
+/* Mission year bar */
+#year-bar-mission {
+    position: fixed;
+    bottom: 76px;
+    left: 24px;
+    min-width: 210px;
+    max-width: 250px;
+}
+
+.year-track-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0 6px;
+}
+
+.year-label {
+    font-size: 0.6rem;
+    color: rgba(200, 240, 255, 0.45);
+    letter-spacing: 1px;
+    white-space: nowrap;
+}
+
+.year-track {
+    flex: 1;
+    height: 4px;
+    background: rgba(0, 210, 255, 0.15);
+    border-radius: 2px;
+    position: relative;
+}
+
+.year-pip--now {
+    position: absolute;
+    left: 0%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 10px;
+    height: 10px;
+    background: #f5a623;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #f5a623, 0 0 16px rgba(245, 166, 35, 0.4);
+}
+
+.year-status {
+    font-size: 0.58rem;
+    color: rgba(245, 166, 35, 0.65);
+    letter-spacing: 1.5px;
+    text-align: center;
+    margin-top: 2px;
+}
+
+/* Relay ship overlay */
+#relay-ship {
+    position: fixed;
+    bottom: -18px;
+    right: 36px;
+    width: 80px;
+    z-index: 3;
+    color: #f5a623;
+    opacity: 0.55;
+    filter: drop-shadow(0 0 10px rgba(245, 166, 35, 0.45));
+    pointer-events: none;
+}
+
+/* Signal Key toggle button */
+.key-hud-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    letter-spacing: inherit;
+    width: 100%;
+    text-align: left;
+}
+
+.key-hud-toggle-arrow {
+    font-size: 0.55rem;
+    color: rgba(0, 210, 255, 0.6);
+    transition: transform 0.2s ease;
+    display: inline-block;
+}
+
+#key-hud:not(.key-hud--collapsed) .key-hud-toggle-arrow {
+    transform: rotate(90deg);
+}
+
+.key-hud-body {
+    margin-top: 12px;
+}
+
+/* Collapsed state: shrink min-width to just fit the title row */
+.key-hud--collapsed {
+    min-width: 0;
+}
+
+/* ISS HUD toggle uses amber accent to match ISS color */
+#iss-hud .key-hud-toggle-arrow {
+    color: rgba(245, 166, 35, 0.7);
+}
+
+/* Constellation layers panel — top right (replaces former signal key position) */
+#layers-hud {
+    top: 90px;
+    right: 24px;
+    min-width: 0;
+    /* Cap to the viewport so the expanded (multi-nation) list can't crop
+       off the bottom of the screen. border-box so padding counts inside the cap. */
+    box-sizing: border-box;
+    max-height: calc(100vh - 90px - 24px);
+    display: flex;
+    flex-direction: column;
+}
+
+/* Scroll the layer list inside the panel rather than overflowing the viewport */
+#layers-hud .key-hud-body {
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
+    flex: 1 1 auto;
+    padding-right: 4px;
+    scrollbar-width: thin;
+}
+#layers-hud .key-hud-body::-webkit-scrollbar {
+    width: 6px;
+}
+#layers-hud .key-hud-body::-webkit-scrollbar-thumb {
+    background: rgba(0, 210, 255, 0.4);
+    border-radius: 3px;
+}
+
+.layer-list {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 0;
+}
+
+.layer-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 9px;
+}
+
+.layer-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.68rem;
+    font-family: var(--font-mono);
+    letter-spacing: 1.2px;
+    color: rgba(200, 240, 255, 0.85);
+    user-select: none;
+}
+
+/* Hide native checkbox — swatch acts as indicator */
+.layer-label input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.layer-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    opacity: 0.3;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/* Swatch + label brighten when checked */
+.layer-label:has(input:checked) .layer-swatch {
+    opacity: 1;
+    transform: scale(1.3);
+}
+
+.layer-label:has(input:checked) {
+    color: rgba(255, 255, 255, 0.95);
+}
+
+.layer-name {
+    font-weight: 600;
+    letter-spacing: 1.5px;
+}
+
+.layer-flag {
+    font-size: 0.78rem;
+    line-height: 1;
+}
+
+.layer-status {
+    font-size: 0.58rem;
+    color: rgba(200, 240, 255, 0.4);
+    letter-spacing: 1px;
+    min-width: 26px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ISS row — no checkbox, static indicator */
+.layer-label--static {
+    cursor: default;
+    user-select: none;
+}
+
+.layer-label--static .layer-swatch {
+    opacity: 1;
+}
+
+/* Section divider rows inside layer list */
+.layer-item--section {
+    margin-top: 6px;
+    margin-bottom: 4px;
+    border-top: 1px solid rgba(0, 210, 255, 0.12);
+    padding-top: 6px;
+    justify-content: flex-start;
+}
+
+.layer-section-label {
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: rgba(0, 210, 255, 0.35);
+    text-transform: uppercase;
+}
+
+/* Starlink density sub-row inside layers panel */
+.layer-item--slider {
+    display: block;
+    padding: 4px 0 2px;
+    border-top: 1px solid rgba(0, 210, 255, 0.1);
+    margin-top: -4px;
+    margin-bottom: 6px;
+}
+
+.sl-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0 4px;
+}
+
+.sl-label-min,
+.sl-label-max {
+    white-space: nowrap;
+    font-size: 0.58rem;
+    color: rgba(200, 240, 255, 0.4);
+    letter-spacing: 1px;
+    min-width: 24px;
+}
+
+.sl-label-max {
+    text-align: right;
+}
+
+.sl-slider {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: rgba(0, 210, 255, 0.2);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+
+.sl-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #00ccff;
+    box-shadow: 0 0 6px rgba(0, 204, 255, 0.6);
+    cursor: pointer;
+}
+
+.sl-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border: none;
+    border-radius: 50%;
+    background: #00ccff;
+    box-shadow: 0 0 6px rgba(0, 204, 255, 0.6);
+    cursor: pointer;
+}
+
+.sl-slider-val {
+    font-size: 0.6rem;
+    color: rgba(200, 240, 255, 0.5);
+    letter-spacing: 1.5px;
+    text-align: center;
+}
+
+.sl-slider-val span {
+    color: #00ccff;
+    font-weight: 700;
+}
+
+/* Starlink panel — sits left of the layers panel, top right */
+#starlink-hud {
+    top: 90px;
+    right: 270px;
+    min-width: 0;
+    box-sizing: border-box;
+}
+#starlink-hud .hud-title { color: rgba(0, 204, 255, 0.75); }
+#starlink-hud .key-hud-toggle-arrow { color: rgba(0, 204, 255, 0.75); }
+
+#starlink-controls { margin-top: 10px; }
+
+.sl-fetch-all-btn {
+    width: 100%;
+    margin-top: 10px;
+    padding: 7px 10px;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: #001018;
+    background: linear-gradient(135deg, #00ccff 0%, #00a0dd 100%);
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: filter 0.15s, transform 0.1s;
+}
+.sl-fetch-all-btn:hover { filter: brightness(1.15); }
+.sl-fetch-all-btn:active { transform: scale(0.98); }
+.sl-fetch-all-btn:disabled {
+    opacity: 0.55;
+    cursor: progress;
+    background: rgba(0, 204, 255, 0.3);
+    color: rgba(255, 255, 255, 0.7);
+}
+.sl-fetch-all-btn.is-loaded {
+    background: rgba(0, 204, 255, 0.12);
+    color: rgba(0, 204, 255, 0.85);
+    border: 1px solid rgba(0, 204, 255, 0.4);
+    cursor: default;
+}
+.sl-fetch-hint {
+    margin-top: 6px;
+    font-size: 0.52rem;
+    letter-spacing: 1px;
+    color: rgba(200, 240, 255, 0.35);
+    text-align: center;
+}
+
+/* ── Time-warp controls ─────────────────────────────────────────────────── */
+.time-warp {
+    bottom: 72px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    min-width: 0;
+}
+.tw-label {
+    font-size: 0.58rem;
+    letter-spacing: 2px;
+    color: rgba(0, 210, 255, 0.6);
+    font-weight: 700;
+}
+.tw-btns { display: flex; gap: 4px; }
+.tw-btn {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    min-width: 38px;
+    padding: 5px 8px;
+    background: rgba(0, 210, 255, 0.08);
+    color: rgba(200, 240, 255, 0.7);
+    border: 1px solid rgba(0, 210, 255, 0.25);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.tw-btn:hover { background: rgba(0, 210, 255, 0.2); color: #fff; }
+.tw-btn--active {
+    background: rgba(0, 210, 255, 0.85);
+    color: #001018;
+    box-shadow: 0 0 12px rgba(0, 210, 255, 0.45);
+}
+
+/* ── Satellite inspector card ───────────────────────────────────────────── */
+.sat-detail {
+    bottom: 120px;
+    right: 24px;
+    min-width: 210px;
+    max-width: 250px;
+    z-index: 16;
+}
+.sat-detail-close {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    width: 20px;
+    height: 20px;
+    line-height: 1;
+    background: none;
+    border: none;
+    color: rgba(200, 240, 255, 0.5);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: color 0.15s;
+}
+.sat-detail-close:hover { color: #00d2ff; }
+.sat-detail .hud-title { color: rgba(0, 210, 255, 0.85); padding-right: 24px; }
+
+@media (max-width: 600px) {
+    #iss-hud {
+        top: 76px;
+        left: 12px;
+    }
+
+    /* Layers + Starlink panels stay visible on mobile. Collapsed they're just
+       a title chip (top-right); expanded they cap to the viewport height and
+       scroll internally, so they never overlap or cover the globe. The two
+       panels stack vertically on the right edge. */
+    #starlink-hud {
+        top: 76px;
+        right: 12px;
+    }
+    #layers-hud {
+        top: 76px;
+        right: 12px;
+        /* When expanded, offset below the (collapsed) Starlink chip so the two
+           cards don't overlap. JS keeps only one expanded at a time on mobile. */
+        max-height: calc(100vh - 76px - 80px);
+    }
+    /* When a panel is expanded on mobile, dim+narrow so the globe stays readable */
+    #layers-hud:not(.key-hud--collapsed),
+    #starlink-hud:not(.key-hud--collapsed) {
+        max-width: min(74vw, 280px);
+    }
+
+    #year-bar-mission {
+        display: none;
+    }
+
+    #relay-ship {
+        width: 56px;
+        right: 12px;
+        bottom: -10px;
+        opacity: 0.4;
+    }
+
+    .time-warp {
+        bottom: 60px;
+    }
+
+    .sat-detail {
+        left: 12px;
+        right: 12px;
+        bottom: 100px;
+        max-width: none;
+    }
+
+    .orbital-hud {
+        font-size: 0.64rem;
+        padding: 12px 16px;
+        min-width: 0;
+    }
+}
+
+@media (max-width: 480px) {
+    .orbital-hud {
+        font-size: 0.58rem;
+        padding:   8px 10px;
+    }
+}
+
+
+/* ==========================================================================
+   STANDALONE additions — source toggle, refresh, neutral chrome
+   ========================================================================== */
+
+/* Source toggle row inside the LAYERS hud */
+.source-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(0, 210, 255, 0.25);
+}
+.source-row__label {
+    font-size: 0.62rem;
+    letter-spacing: 1.5px;
+    color: rgba(160, 210, 240, 0.7);
+}
+.source-toggle {
+    display: flex;
+    border: 1px solid rgba(0, 210, 255, 0.4);
+    border-radius: 5px;
+    overflow: hidden;
+}
+.source-btn {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 1px;
+    padding: 4px 8px;
+    background: transparent;
+    color: rgba(200, 240, 255, 0.85);
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.source-btn + .source-btn { border-left: 1px solid rgba(0, 210, 255, 0.3); }
+.source-btn--active {
+    background: rgba(0, 210, 255, 0.85);
+    color: #001018;
+    font-weight: 700;
+}
+.source-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.refresh-btn {
+    margin-left: auto;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 210, 255, 0.4);
+    background: transparent;
+    color: rgba(200, 240, 255, 0.95);
+    font-size: 0.95rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.15s;
+}
+.refresh-btn:hover { background: rgba(0, 210, 255, 0.18); }
+.refresh-btn.is-spinning { animation: refresh-spin 1.1s linear infinite; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
+
+/* Neutral topbar + footer */
+.orbital-topbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 2px;
+    background: linear-gradient(180deg, rgba(0, 8, 16, 0.7) 0%, transparent 100%);
+    pointer-events: none;
+}
+.orbital-brand, .orbital-wordmark {
+    color: rgba(200, 240, 255, 0.9);
+    text-decoration: none;
+    pointer-events: auto;
+}
+.orbital-brand:hover { color: #00d2ff; }
+.orbital-wordmark { font-weight: 700; letter-spacing: 3px; }
+
+.orbital-footer {
+    position: fixed;
+    bottom: 8px; right: 16px;
+    z-index: 20;
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    letter-spacing: 1px;
+    color: rgba(160, 200, 230, 0.55);
+    pointer-events: none;
+}
